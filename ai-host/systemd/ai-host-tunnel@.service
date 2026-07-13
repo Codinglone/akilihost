@@ -1,0 +1,30 @@
+[Unit]
+Description=ai-host SSH Tunnel (8002)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=codinglone
+Group=codinglone
+
+Environment=AUTOSSH_GATETIME=0
+Environment=AUTOSSH_POLL=10
+Environment=AUTOSSH_FIRST_POLL=5
+Environment=AUTOSSH_LOGLEVEL=7
+
+ExecStart=/usr/bin/autossh -M 0 \
+  -o "ServerAliveInterval=30" \
+  -o "ServerAliveCountMax=3" \
+  -o "ExitOnForwardFailure=yes" \
+  -o "StrictHostKeyChecking=no" \
+  -N -L 8002:localhost:8002 myserver
+
+Restart=always
+RestartSec=5
+
+StandardOutput=append:/var/log/ai-host-tunnel.log
+StandardError=append:/var/log/ai-host-tunnel.log
+
+[Install]
+WantedBy=multi-user.target

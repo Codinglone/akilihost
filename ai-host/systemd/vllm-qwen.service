@@ -1,0 +1,41 @@
+[Unit]
+Description=vLLM Qwen3-Coder-Next FP8 Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+
+Environment=HF_HOME=/mnt/volume_3mx7vkr/hf-cache
+Environment=HUGGINGFACE_HUB_CACHE=/mnt/volume_3mx7vkr/hf-cache
+Environment=TRANSFORMERS_CACHE=/mnt/volume_3mx7vkr/hf-cache
+Environment=VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
+Environment=PYTHONUNBUFFERED=1
+
+WorkingDirectory=/home/ubuntu
+
+ExecStart=/mnt/volume_3mx7vkr/python_envs/vllm-env/bin/vllm serve Qwen/Qwen3-Coder-Next \
+  --host 0.0.0.0 --port 8002 \
+  --dtype bfloat16 --quantization fp8 \
+  --gpu-memory-utilization 0.85 \
+  --max-model-len 262144 \
+  --enforce-eager \
+  --enable-auto-tool-choice \
+  --tool-call-parser qwen3_coder \
+  --generation-config vllm \
+  --gdn-prefill-backend triton
+
+Restart=always
+RestartSec=10
+
+# OOM protection
+OOMScoreAdjust=-500
+
+# Limit logging
+StandardOutput=append:/var/log/vllm-qwen.log
+StandardError=append:/var/log/vllm-qwen.log
+
+[Install]
+WantedBy=multi-user.target

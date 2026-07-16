@@ -1,23 +1,22 @@
 [Unit]
-Description=vLLM Qwen3-Coder-Next FP8 Server
+Description=vLLM Model Server
 After=network-online.target
 Wants=network-online.target
-RefuseManualStop=yes
 
 [Service]
 Type=simple
 User=ubuntu
 Group=ubuntu
 
-Environment=HF_HOME=/mnt/volume_3mx7vkr/hf-cache
-Environment=HUGGINGFACE_HUB_CACHE=/mnt/volume_3mx7vkr/hf-cache
-Environment=TRANSFORMERS_CACHE=/mnt/volume_3mx7vkr/hf-cache
+Environment=HF_HOME=/opt/hf-cache
+Environment=HUGGINGFACE_HUB_CACHE=/opt/hf-cache
+Environment=TRANSFORMERS_CACHE=/opt/hf-cache
 Environment=VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
 Environment=PYTHONUNBUFFERED=1
 
 WorkingDirectory=/home/ubuntu
 
-ExecStart=/mnt/volume_3mx7vkr/python_envs/vllm-env/bin/vllm serve Qwen/Qwen3-Coder-Next \
+ExecStart=/opt/vllm-env/bin/vllm serve Qwen/Qwen3-Coder-Next \
   --host 0.0.0.0 --port 8002 \
   --dtype bfloat16 --quantization fp8 \
   --gpu-memory-utilization 0.85 \
@@ -31,10 +30,6 @@ ExecStart=/mnt/volume_3mx7vkr/python_envs/vllm-env/bin/vllm serve Qwen/Qwen3-Cod
 Restart=always
 RestartSec=10
 
-# OOM protection
-OOMScoreAdjust=-500
-
-# Limit logging
 StandardOutput=append:/var/log/vllm-qwen.log
 StandardError=append:/var/log/vllm-qwen.log
 

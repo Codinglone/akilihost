@@ -20,7 +20,7 @@ echo "=== ai-host: Deploy to $SERVER ==="
 echo "[1/4] Installing vLLM venv and dependencies..."
 ssh "$SERVER" bash -s << 'SRV'
   set -euo pipefail
-  VENV_DIR="/mnt/volume_3mx7vkr/python_envs/vllm-env"
+  VENV_DIR="/opt/vllm-env"
   if [ ! -d "$VENV_DIR" ]; then
     echo "  Creating Python venv..."
     python3 -m venv "$VENV_DIR"
@@ -29,11 +29,10 @@ ssh "$SERVER" bash -s << 'SRV'
     pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu128
     pip install vllm==0.18.0
     pip install flashinfer -i https://flashinfer.ai/whl/cu124/torch2.6/
-    mkdir -p /mnt/volume_3mx7vkr/hf-cache
-    mkdir -p /mnt/volume_3mx7vkr/python_envs
+    mkdir -p /opt/hf-cache
     # Symlink cache directories
-    ln -sf /mnt/volume_3mx7vkr/hf-cache /home/ubuntu/.cache/huggingface 2>/dev/null || true
-    mkdir -p /mnt/volume_3mx7vkr/vllm-cache
+    ln -sf /opt/hf-cache ~/.cache/huggingface 2>/dev/null || true
+    mkdir -p /opt/vllm-cache
     echo "  Venv ready!"
   else
     echo "  Venv already exists at $VENV_DIR"

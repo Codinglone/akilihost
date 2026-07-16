@@ -1,6 +1,6 @@
 package main
 
-import "github.com/codinglone/ai-host/cli"
+import "github.com/Codinglone/akilihost/cli"
 
 func main() {
 	cli.Execute()

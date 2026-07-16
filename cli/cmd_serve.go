@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/codinglone/ai-host/host"
+	"github.com/Codinglone/akilihost/host"
 )
 
 var serveCmd = &cobra.Command{
@@ -157,7 +157,7 @@ func createSystemdService(model *host.Model, quantization *host.Quantization, po
 
 	serviceContent := fmt.Sprintf(`[Unit]
 Description=vLLM %s Server
-Documentation=https://github.com/codinglone/ai-host
+Documentation=https://github.com/Codinglone/akilihost
 After=network-online.target
 Wants=network-online.target
 

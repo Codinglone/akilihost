@@ -1,4 +1,4 @@
-module github.com/codinglone/ai-host
+module github.com/Codinglone/akilihost
 
 go 1.26.2
 

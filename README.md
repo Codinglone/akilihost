@@ -1,6 +1,10 @@
 # ai-host
 
-Self-host coding LLMs on single-GPU servers.
+Deploy open-weight language models on GPU servers. Covers the full lifecycle: environment setup, model serving, service management, and monitoring.
+
+## Why
+
+Running open-weight LLMs on your own hardware means no per-token billing, no rate limits, and full control over the stack. But getting there requires wrestling with Python venvs, CUDA versions, vLLM flags, systemd services, and HuggingFace caches. ai-host automates these steps so you can focus on using the models.
 
 ## Prerequisites
 
@@ -59,7 +63,7 @@ Setup Python venv, vLLM, and cache directories.
 
 | Variable | Purpose |
 |----------|---------|
-| `CUDA_VISIBLE_DEVICES` | GPU selection (e.g., `3` for GPU 3) |
+| `CUDA_VISIBLE_DEVICES` | Limit model to specific GPUs |
 | `HF_HOME` | HuggingFace cache directory |
 
 ---

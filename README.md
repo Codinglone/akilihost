@@ -62,18 +62,6 @@ Setup Python venv, vLLM, and cache directories.
 | `CUDA_VISIBLE_DEVICES` | GPU selection (e.g., `3` for GPU 3) |
 | `HF_HOME` | HuggingFace cache directory |
 
-## Example: Multi-GPU Setup
-
-Server with 4 GPUs (0-2 for training, 3 for inference):
-
-```bash
-# Install vLLM and setup (run once)
-./ai-host init
-
-# Deploy model on GPU 3
-CUDA_VISIBLE_DEVICES=3 ./ai-host serve Qwen/Qwen3-Coder-Next
-```
-
 ---
 
 Run `./ai-host --help` for full reference.

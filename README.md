@@ -1,10 +1,10 @@
-# ai-host
+# akilihost
 
-Deploy open-weight language models on GPU servers. Covers the full lifecycle: environment setup, model serving, service management, and monitoring.
+Self-host coding LLMs on single-GPU servers.
 
 ## Why
 
-Running open-weight LLMs on your own hardware means no per-token billing, no rate limits, and full control over the stack. But getting there requires wrestling with Python venvs, CUDA versions, vLLM flags, systemd services, and HuggingFace caches. ai-host automates these steps so you can focus on using the models.
+Running open-weight LLMs on your own hardware means no per-token billing, no rate limits, and full control over the stack. But getting there requires wrestling with Python venvs, CUDA versions, vLLM flags, systemd services, and HuggingFace caches. akilihost automates these steps so you can focus on using the models.
 
 ## Prerequisites
 
@@ -14,8 +14,8 @@ Running open-weight LLMs on your own hardware means no per-token billing, no rat
 
 ## Quick Start
 
-1. Build: `go build -o ai-host`
-2. Deploy: `./ai-host serve auto`
+1. Build: `go build -o akilihost`
+2. Deploy: `./akilihost serve auto`
 3. Test: `curl http://localhost:8002/v1/chat/completions`
 
 ## Commands
@@ -25,9 +25,9 @@ Running open-weight LLMs on your own hardware means no per-token billing, no rat
 Start a model server. Auto-picks best quantization based on your GPU.
 
 ```bash
-./ai-host serve auto                # Best model for your GPU
-./ai-host serve Qwen/Qwen3-Coder-Next
-./ai-host serve Qwen/Qwen3-Coder-Next --port 8003
+./akilihost serve auto                # Best model for your GPU
+./akilihost serve Qwen/Qwen3-Coder-Next
+./akilihost serve Qwen/Qwen3-Coder-Next --port 8003
 ```
 
 ### `ps`
@@ -38,10 +38,10 @@ List running models with port, VRAM usage, and health.
 
 Stop a model server. Target can be:
 
-- Service name: `./ai-host stop qwen`
-- Port number: `./ai-host stop 8002`
-- Process ID: `./ai-host stop 12345`
-- Model name (partial): `./ai-host stop Qwen3`
+- Service name: `./akilihost stop qwen`
+- Port number: `./akilihost stop 8002`
+- Process ID: `./akilihost stop 12345`
+- Model name (partial): `./akilihost stop Qwen3`
 
 ### `recommend`
 
@@ -68,4 +68,4 @@ Setup Python venv, vLLM, and cache directories.
 
 ---
 
-Run `./ai-host --help` for full reference.
+Run `./akilihost --help` for full reference.

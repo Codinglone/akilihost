@@ -16,23 +16,64 @@ Self-host coding LLMs on single-GPU servers.
 
 ## Commands
 
-- `serve <model>` - Start a model server
-- `ps` - List running models
-- `stop <target>` - Stop a model (by service, port, or PID)
-- `recommend` - Show models that fit your GPU
-- `init` - Setup environment
+### `serve <model>`
+
+Start a model server. Auto-picks best quantization based on your GPU.
+
+```bash
+./ai-host serve auto                # Best model for your GPU
+./ai-host serve Qwen/Qwen3-Coder-Next
+./ai-host serve Qwen/Qwen3-Coder-Next --port 8003
+```
+
+### `ps`
+
+List running models with port, VRAM usage, and health.
+
+### `stop <target>`
+
+Stop a model server. Target can be:
+
+- Service name: `./ai-host stop qwen`
+- Port number: `./ai-host stop 8002`
+- Process ID: `./ai-host stop 12345`
+- Model name (partial): `./ai-host stop Qwen3`
+
+### `recommend`
+
+Show models that fit your GPU with benchmarks.
+
+### `init`
+
+Setup Python venv, vLLM, and cache directories.
 
 ## Flags
 
-- `--port` - API port (default 8002)
-- `--gpu-memory-utilization` - VRAM limit (default 0.85)
-- `--max-model-len` - Max context length (default 262144)
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--port` | 8002 | API port |
+| `--gpu-memory-utilization` | 0.85 | Max GPU memory fraction |
+| `--max-model-len` | 262144 | Max context tokens |
 
-## Environment
+## Environment Variables
 
-- `CUDA_VISIBLE_DEVICES` - Which GPU to use
-- `HF_HOME` - HuggingFace cache directory
+| Variable | Purpose |
+|----------|---------|
+| `CUDA_VISIBLE_DEVICES` | GPU selection (e.g., `3` for GPU 3) |
+| `HF_HOME` | HuggingFace cache directory |
+
+## Example: Multi-GPU Setup
+
+Server with 4 GPUs (0-2 for training, 3 for inference):
+
+```bash
+# Install vLLM and setup (run once)
+./ai-host init
+
+# Deploy model on GPU 3
+CUDA_VISIBLE_DEVICES=3 ./ai-host serve Qwen/Qwen3-Coder-Next
+```
 
 ---
 
-See `./ai-host --help` for details.
+Run `./ai-host --help` for full reference.

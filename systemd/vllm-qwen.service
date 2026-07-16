@@ -2,6 +2,7 @@
 Description=vLLM Qwen3-Coder-Next FP8 Server
 After=network-online.target
 Wants=network-online.target
+RefuseManualStop=yes
 
 [Service]
 Type=simple

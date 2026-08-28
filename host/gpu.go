@@ -12,6 +12,7 @@ import (
 type GPUInfo struct {
 	Name          string  `json:"name"`
 	TotalVRAMMB   int     `json:"total_vram_mb"`
+	SystemRAMMB   int     `json:"system_ram_mb"`
 	CUDAMajor     int     `json:"cuda_major"`
 	CUDAMinor     int     `json:"cuda_minor"`
 	ComputeCap    string  `json:"compute_cap"`
@@ -22,6 +23,23 @@ func parseVRAM(vramStr string) (int, error) {
 	vramStr = strings.ReplaceAll(vramStr, "MiB", "")
 	vramStr = strings.TrimSpace(vramStr)
 	return parseInt(vramStr)
+}
+
+func parseSystemRAMMB(meminfo string) int {
+	for _, line := range strings.Split(meminfo, "\n") {
+		if strings.HasPrefix(line, "MemTotal:") {
+			line = strings.TrimPrefix(line, "MemTotal:")
+			line = strings.TrimSpace(line)
+			line = strings.TrimSuffix(line, "kB")
+			line = strings.TrimSpace(line)
+			kb, err := strconv.Atoi(line)
+			if err != nil {
+				return 0
+			}
+			return kb / 1024
+		}
+	}
+	return 0
 }
 
 func parseInt(s string) (int, error) {
@@ -134,9 +152,17 @@ func DetectGPU() (*GPUInfo, error) {
 		}
 	}
 
+	// Detect system RAM from /proc/meminfo
+	systemRAMMB := 0
+	meminfo, err := os.ReadFile("/proc/meminfo")
+	if err == nil {
+		systemRAMMB = parseSystemRAMMB(string(meminfo))
+	}
+
 	return &GPUInfo{
 		Name:          name,
 		TotalVRAMMB:   vramMB,
+		SystemRAMMB:   systemRAMMB,
 		CUDAMajor:     cudaMajor,
 		CUDAMinor:     cudaMinor,
 		ComputeCap:    computeCap,

@@ -114,7 +114,7 @@ func parseCUDAVersionFromDriver(s string) (int, int, error) {
 
 // DetectGPU parses nvidia-smi output to detect GPU specs
 func DetectGPU() (*GPUInfo, error) {
-	cmd := exec.Command("nvidia-smi", "--query-gpu=name,memory.total,driver_version,compute_cap,cuda_version", "--format=csv,noheader,nounits")
+	cmd := exec.Command("nvidia-smi", "--query-gpu=name,memory.total,driver_version,compute_cap", "--format=csv,noheader,nounits")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -126,7 +126,7 @@ func DetectGPU() (*GPUInfo, error) {
 	}
 
 	parts := strings.Split(lines, ",")
-	if len(parts) < 5 {
+	if len(parts) < 4 {
 		return nil, os.ErrNotExist
 	}
 
@@ -134,7 +134,6 @@ func DetectGPU() (*GPUInfo, error) {
 	vramStr := strings.TrimSpace(parts[1])
 	driverVer := strings.TrimSpace(parts[2])
 	computeCap := strings.TrimSpace(parts[3])
-	cudaVerStr := strings.TrimSpace(parts[4])
 
 	// Parse VRAM (format: "143167 MiB")
 	vramMB, err := parseVRAM(vramStr)
@@ -142,15 +141,8 @@ func DetectGPU() (*GPUInfo, error) {
 		return nil, err
 	}
 
-	// Parse CUDA version from nvidia-smi output (format: "12.4" or "12004")
-	cudaMajor, cudaMinor, err := parseCUDAVersion(cudaVerStr)
-	if err != nil {
-		// Fallback to parsing from driver version
-		cudaMajor, cudaMinor, err = parseCUDAVersionFromDriver(driverVer)
-		if err != nil {
-			cudaMajor, cudaMinor = 12, 4
-		}
-	}
+	// Parse CUDA version from driver version (cuda_version is not a valid nvidia-smi query field)
+	cudaMajor, cudaMinor, err := parseCUDAVersionFromDriver(driverVer)
 
 	// Detect system RAM from /proc/meminfo
 	systemRAMMB := 0

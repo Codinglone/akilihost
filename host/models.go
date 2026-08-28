@@ -8,6 +8,7 @@ type Quantization struct {
 	QuantMode   string   `yaml:"quant_mode"`
 	MinVRAMMB   int      `yaml:"min_vram_mb"`
 	Flags       []string `yaml:"flags,omitempty"`
+	FilePattern string   `yaml:"file_pattern,omitempty"`
 }
 
 // Model represents a self-hosted LLM
@@ -20,13 +21,21 @@ type Model struct {
 	ActiveParams   string             `yaml:"active_params"` // for MoE
 	ContextTok     int                `yaml:"context_tokens"`
 	License        string             `yaml:"license"`
+	Backend        string             `yaml:"backend"`
 	Benchmarks     map[string]float32 `yaml:"benchmarks,omitempty"`
 	Quantizations  []Quantization     `yaml:"quantizations"`
 }
 
 // LoadModelDB loads the curated model database from embedded YAML
 func LoadModelDB() ([]Model, error) {
-	return prepopulatedModels, nil
+	models := make([]Model, len(prepopulatedModels))
+	copy(models, prepopulatedModels)
+	for i := range models {
+		if models[i].Backend == "" {
+			models[i].Backend = "vllm"
+		}
+	}
+	return models, nil
 }
 
 // prepopulatedModels is the embedded model database (15 curated models)
@@ -103,6 +112,38 @@ var prepopulatedModels = []Model{
 				QuantMode:   "fp8",
 				MinVRAMMB:   119000,
 				Flags:       []string{"--dtype", "bfloat16", "--quantization", "fp8"},
+			},
+		},
+	},
+	{
+		RepoID:       "unsloth/Qwen3.8-27B-GGUF",
+		Name:         "Qwen3.8-27B",
+		Description:  "Qwen3.8 27B with vision + reasoning, 256K context",
+		Architecture: "dense",
+		TotalParams:  "27B",
+		ActiveParams: "27B",
+		ContextTok:   262144,
+		License:      "Apache 2.0",
+		Backend:      "llama-cpp",
+		Benchmarks: map[string]float32{
+			"HumanEval":      90.3,
+			"SWE-bench":      61.7,
+			"LiveCodeBench":  90.3,
+		},
+		Quantizations: []Quantization{
+			{
+				Name:        "UD-Q4_K_XL",
+				Description: "Unsloth Dynamic 4-bit (~17GB, GPU+CPU split)",
+				MinVRAMMB:   17408,
+				FilePattern: "*UD-Q4_K_XL*",
+				Flags:       []string{"--n-gpu-layers", "auto"},
+			},
+			{
+				Name:        "UD-Q3_K_XL",
+				Description: "Unsloth Dynamic 3-bit (~13GB, fits T4 fully)",
+				MinVRAMMB:   13312,
+				FilePattern: "*UD-Q3_K_XL*",
+				Flags:       []string{"--n-gpu-layers", "999"},
 			},
 		},
 	},

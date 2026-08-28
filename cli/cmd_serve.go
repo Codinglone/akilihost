@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -97,26 +98,25 @@ var serveCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		// Show selection and confirm
+		// Select backend
+		backend := host.SelectBackend(modelToServe, quantization, gpu)
+		port := determinePort(modelToServe.RepoID)
+
 		fmt.Printf("\nSelected:\n")
 		fmt.Printf("  Model: %s\n", modelToServe.Name)
 		fmt.Printf("  Repo: %s\n", modelToServe.RepoID)
 		fmt.Printf("  Quantization: %s\n", quantization.Name)
-		fmt.Printf("  Description: %s\n", quantization.Description)
-		fmt.Printf("  Flags: %s\n", strings.Join(quantization.Flags, " "))
+		fmt.Printf("  Backend: %s\n", backend)
+		fmt.Printf("  Port: %d\n", port)
 
-		// Determine port based on model name
-		port := determinePort(modelToServe.RepoID)
+		if backend == "llama-cpp" {
+			fmt.Printf("\nPreparing llama.cpp backend...\n")
+			serveLlamaCpp(modelToServe, quantization, port)
+		} else {
+			fmt.Printf("\nPreparing vLLM backend...\n")
+			serveVllm(modelToServe, quantization, port)
+		}
 
-		// Create systemd service
-		fmt.Printf("\nCreating systemd service for %s...\n", modelToServe.Name)
-		createSystemdService(modelToServe, quantization, port)
-
-		// Start the service
-		fmt.Printf("\nStarting service...\n")
-		startSystemdService(modelToServe.Name)
-
-		// Wait and verify
 		fmt.Printf("\nVerifying...\n")
 		waitAndVerify(port)
 	},
@@ -134,7 +134,7 @@ func determinePort(repoID string) int {
 	return 8002
 }
 
-func createSystemdService(model *host.Model, quantization *host.Quantization, port int) {
+func createVllmService(model *host.Model, quantization *host.Quantization, port int) {
 	// Build vLLM command
 	args := []string{
 		"vllm", "serve", model.RepoID,
@@ -173,7 +173,8 @@ WantedBy=multi-user.target
 `, model.Name, strings.Join(args, " "))
 
 	// Write service file
-	servicePath := "/etc/systemd/system/vllm-" + strings.ReplaceAll(model.Name, " ", "-") + ".service"
+	serviceName := host.ServiceName(model)
+	servicePath := "/etc/systemd/system/" + serviceName + ".service"
 	fmt.Printf("  Writing service file: %s\n", servicePath)
 
 	cmd := exec.Command("sudo", "bash", "-c", fmt.Sprintf("cat > %s", servicePath))
@@ -191,18 +192,9 @@ WantedBy=multi-user.target
 	} else {
 		fmt.Println("  Done")
 	}
-
-	// Enable service
-	fmt.Printf("  Enabling service...\n")
-	cmd = exec.Command("sudo", "systemctl", "enable", "vllm-"+strings.ReplaceAll(model.Name, " ", "-")+".service")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		fmt.Printf("  Failed: %s\n", string(output))
-	} else {
-		fmt.Println("  Done")
-	}
 }
 
-func startSystemdService(modelName string) {
+func startVllmService(modelName string) {
 	serviceName := "vllm-" + strings.ReplaceAll(modelName, " ", "-")
 
 	cmd := exec.Command("sudo", "systemctl", "start", serviceName)
@@ -233,4 +225,111 @@ func waitAndVerify(port int) {
 		fmt.Printf("  Waiting... (%ds)\n", (i+1)*5)
 	}
 	fmt.Println("  Timeout - check logs for errors")
+}
+
+func serveVllm(model *host.Model, quant *host.Quantization, port int) {
+	fmt.Printf("  Flags: %s\n", strings.Join(quant.Flags, " "))
+	fmt.Printf("\nCreating systemd service for %s...\n", model.Name)
+	createVllmService(model, quant, port)
+	fmt.Printf("\nStarting service...\n")
+	startVllmService(model.Name)
+}
+
+func serveLlamaCpp(model *host.Model, quant *host.Quantization, port int) {
+	modelDir := host.ModelDir(model)
+
+	// Download GGUF if not present
+	ggufPath := filepath.Join(modelDir, "model.gguf")
+	if _, err := os.Stat(ggufPath); os.IsNotExist(err) {
+		fmt.Printf("  Downloading %s %s...\n", model.Name, quant.Name)
+		fmt.Printf("  Pattern: %s\n", quant.FilePattern)
+
+		cmd := exec.Command("hf", "download", model.RepoID,
+			"--local-dir", modelDir,
+			"--include", quant.FilePattern)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("  Download failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Find the downloaded GGUF file(s)
+		entries, err := os.ReadDir(modelDir)
+		if err != nil {
+			fmt.Printf("  Cannot read model dir: %v\n", err)
+			os.Exit(1)
+		}
+		var files []string
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".gguf") {
+				files = append(files, e.Name())
+			}
+		}
+		matched := host.ResolveGGUFFromList(files, quant.FilePattern)
+		if len(matched) == 0 {
+			fmt.Printf("  No GGUF file matching %s found in %s\n", quant.FilePattern, modelDir)
+			os.Exit(1)
+		}
+		ggufPath = filepath.Join(modelDir, matched[0])
+		fmt.Printf("  Using: %s\n", ggufPath)
+	} else {
+		fmt.Printf("  Model already downloaded: %s\n", ggufPath)
+	}
+
+	// Build command and create systemd service
+	args := host.BuildLlamaServerCommand(model, quant, ggufPath, port)
+	serviceName := host.ServiceName(model)
+
+	fmt.Printf("  Creating systemd service: %s\n", serviceName)
+	createLlamaCppService(serviceName, args)
+
+	fmt.Printf("\n  Starting service...\n")
+	startService(serviceName)
+}
+
+func createLlamaCppService(serviceName string, args []string) {
+	serviceContent := fmt.Sprintf(`[Unit]
+Description=akilihost llama-server: %s
+Documentation=https://github.com/Codinglone/akilihost
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=10
+ExecStart=%s
+ExecStop=/bin/kill -TERM $MAINPID
+
+[Install]
+WantedBy=multi-user.target
+`, serviceName, strings.Join(args, " "))
+
+	servicePath := "/etc/systemd/system/" + serviceName + ".service"
+	fmt.Printf("  Writing service file: %s\n", servicePath)
+
+	cmd := exec.Command("sudo", "bash", "-c", fmt.Sprintf("cat > %s", servicePath))
+	cmd.Stdin = strings.NewReader(serviceContent)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		fmt.Printf("  Failed to write service file: %s\n", string(output))
+		return
+	}
+
+	fmt.Printf("  Reloading systemd daemon...\n")
+	cmd = exec.Command("sudo", "systemctl", "daemon-reload")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		fmt.Printf("  Failed: %s\n", string(output))
+	} else {
+		fmt.Println("  Done")
+	}
+}
+
+func startService(serviceName string) {
+	cmd := exec.Command("sudo", "systemctl", "start", serviceName)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		fmt.Printf("  Failed to start: %s\n", string(output))
+	} else {
+		fmt.Printf("  Service started: %s\n", serviceName)
+	}
 }

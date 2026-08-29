@@ -9,9 +9,9 @@ import (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "ai-host",
+	Use:   "akilihost",
 	Short: "Self-hosted AI model manager for single GPU",
-	Long: `ai-host automates everything painful about running open-weight LLMs on a single GPU:
+	Long: `akilihost automates everything painful about running open-weight LLMs on a single GPU:
 - CUDA version detection
 - vLLM version selection
 - venv setup
@@ -35,6 +35,4 @@ func init() {
 	rootCmd.AddCommand(psCmd)
 	rootCmd.AddCommand(stopCmd)
 	rootCmd.AddCommand(recommendCmd)
-	rootCmd.AddCommand(tuiCmd)
-	rootCmd.AddCommand(daemonCmd)
 }

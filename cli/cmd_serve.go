@@ -60,17 +60,9 @@ var serveCmd = &cobra.Command{
 					float64(r.TotalMB)/1024, r.Model.Description)
 			}
 
-			// Auto-select first if only one option
-			if len(results) == 1 {
-				modelToServe = results[0].Model
-				quantization = results[0].Quantization
-				fmt.Printf("\nAuto-selecting: %s %s\n", modelToServe.Name, quantization.Name)
-			} else {
-				// For now, just pick the first one (user can specify model manually)
-				modelToServe = results[0].Model
-				quantization = results[0].Quantization
-				fmt.Printf("\nAuto-selecting: %s %s\n", modelToServe.Name, quantization.Name)
-			}
+			modelToServe = results[0].Model
+			quantization = results[0].Quantization
+			fmt.Printf("\nAuto-selecting: %s %s\n", modelToServe.Name, quantization.Name)
 		} else {
 			// Find model by name or repo ID
 			var found bool
@@ -205,9 +197,12 @@ func startVllmService(modelName string) {
 	}
 }
 
+const verifyTimeoutSeconds = 300
+
 func waitAndVerify(port int) {
 	fmt.Printf("  Waiting for server to start...\n")
-	for i := 0; i < 10; i++ {
+	attempts := verifyTimeoutSeconds / 5
+	for i := 0; i < attempts; i++ {
 		cmd := exec.Command("curl", "-s", "--max-time", "5", fmt.Sprintf("http://localhost:%d/v1/models", port))
 		output, err := cmd.Output()
 		if err == nil {
@@ -222,7 +217,7 @@ func waitAndVerify(port int) {
 				return
 			}
 		}
-		fmt.Printf("  Waiting... (%ds)\n", (i+1)*5)
+		fmt.Printf("  Waiting... (%ds elapsed)\n", (i+1)*5)
 	}
 	fmt.Println("  Timeout - check logs for errors")
 }

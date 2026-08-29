@@ -40,12 +40,16 @@ Stop a model server. Target can be:
 
 - Service name: `./akilihost stop qwen`
 - Port number: `./akilihost stop 8002`
-- Process ID: `./akilihost stop 12345`
 - Model name (partial): `./akilihost stop Qwen3`
 
-### `recommend`
+### `recommend [model]`
 
-Show models that fit your GPU with benchmarks.
+Show models that fit your GPU with sizing estimates and benchmarks.
+
+```bash
+./akilihost recommend           # Show all fitting models
+./akilihost recommend Qwen3     # Show specific model sizing
+```
 
 ### `init`
 
@@ -55,9 +59,9 @@ Setup Python venv, vLLM, and cache directories.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--port` | 8002 | API port |
-| `--gpu-memory-utilization` | 0.85 | Max GPU memory fraction |
-| `--max-model-len` | 262144 | Max context tokens |
+| `--port` | 8002 | API port (auto-increments if busy unless explicitly set) |
+| `--gpu-memory-utilization` | 0.90 | Max GPU memory fraction (vLLM) |
+| `--max-model-len` | 32768 | Max context tokens |
 
 ## Environment Variables
 

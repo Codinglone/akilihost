@@ -59,7 +59,7 @@ func buildLlamaCpp() {
 
 	fmt.Println("  Cloning llama.cpp...")
 	cmd = exec.Command("sudo", "bash", "-c",
-		fmt.Sprintf("mkdir -p /opt/akilihost && git clone https://github.com/ggml-org/llama.cpp %s", llamaDir))
+		fmt.Sprintf("mkdir -p /opt/akilihost && (git clone https://github.com/ggml-org/llama.cpp %s || (cd %s && git pull))", llamaDir, llamaDir))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -69,7 +69,7 @@ func buildLlamaCpp() {
 
 	fmt.Println("  Building with CUDA (this takes several minutes)...")
 	buildCmd := fmt.Sprintf(
-		"cd %s && cmake -B build -DBUILD_SHARED_LIBS=OFF -DGGML_CUDA=ON && "+
+		"export PATH=/usr/local/cuda/bin:$PATH && cd %s && cmake -B build -DBUILD_SHARED_LIBS=OFF -DGGML_CUDA=ON -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc && "+
 			"cmake --build build --config Release -j --clean-first --target llama-server && "+
 			"cp build/bin/llama-server /usr/local/bin/",
 		llamaDir)

@@ -7,7 +7,7 @@ import (
 
 // BuildLlamaServerCommand constructs the llama-server argument list
 // for serving a model with split GPU/CPU inference.
-func BuildLlamaServerCommand(model *Model, quant *Quantization, modelPath string, port int) []string {
+func BuildLlamaServerCommand(model *Model, quant *Quantization, modelPath string, port int, ctxSize int) []string {
 	args := []string{
 		"llama-server",
 		"--model", modelPath,
@@ -15,7 +15,7 @@ func BuildLlamaServerCommand(model *Model, quant *Quantization, modelPath string
 		"--port", strconv.Itoa(port),
 		"--cache-type-k", "q8_0",
 		"--cache-type-v", "q8_0",
-		"--ctx-size", "32768",
+		"--ctx-size", strconv.Itoa(ctxSize),
 	}
 	args = append(args, quant.Flags...)
 	return args

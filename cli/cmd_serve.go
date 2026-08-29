@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,16 @@ import (
 
 	"github.com/Codinglone/akilihost/host"
 )
+
+var servePort int
+var serveGpuMemUtil float64
+var serveMaxModelLen int
+
+func init() {
+	serveCmd.Flags().IntVar(&servePort, "port", 8002, "API port (auto-increments if busy unless explicitly set)")
+	serveCmd.Flags().Float64Var(&serveGpuMemUtil, "gpu-memory-utilization", 0.90, "Max GPU memory fraction (vLLM)")
+	serveCmd.Flags().IntVar(&serveMaxModelLen, "max-model-len", 32768, "Max context tokens")
+}
 
 var serveCmd = &cobra.Command{
 	Use:   "serve <model|auto>",
@@ -45,7 +56,7 @@ var serveCmd = &cobra.Command{
 		if target == "auto" || target == " recommand" || target == "recommend" {
 			// Auto-select best fitting model
 			sizer := host.NewModelSizer(gpu)
-			results := sizer.FindFit(models, gpu.TotalVRAMMB*85/100) // Use 85% VRAM
+			results := sizer.FindFit(models, gpu.TotalVRAMMB*85/100, serveMaxModelLen) // Use 85% VRAM
 
 			if len(results) == 0 {
 				fmt.Println("No models fit on this GPU!")
@@ -60,17 +71,9 @@ var serveCmd = &cobra.Command{
 					float64(r.TotalMB)/1024, r.Model.Description)
 			}
 
-			// Auto-select first if only one option
-			if len(results) == 1 {
-				modelToServe = results[0].Model
-				quantization = results[0].Quantization
-				fmt.Printf("\nAuto-selecting: %s %s\n", modelToServe.Name, quantization.Name)
-			} else {
-				// For now, just pick the first one (user can specify model manually)
-				modelToServe = results[0].Model
-				quantization = results[0].Quantization
-				fmt.Printf("\nAuto-selecting: %s %s\n", modelToServe.Name, quantization.Name)
-			}
+			modelToServe = results[0].Model
+			quantization = results[0].Quantization
+			fmt.Printf("\nAuto-selecting: %s %s\n", modelToServe.Name, quantization.Name)
 		} else {
 			// Find model by name or repo ID
 			var found bool
@@ -100,7 +103,11 @@ var serveCmd = &cobra.Command{
 
 		// Select backend
 		backend := host.SelectBackend(modelToServe, quantization, gpu)
-		port := determinePort(modelToServe.RepoID)
+		port, err := resolvePort(servePort, cmd.Flags().Changed("port"))
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
 
 		fmt.Printf("\nSelected:\n")
 		fmt.Printf("  Model: %s\n", modelToServe.Name)
@@ -122,16 +129,30 @@ var serveCmd = &cobra.Command{
 	},
 }
 
-func determinePort(repoID string) int {
-	switch {
-	case strings.Contains(repoID, "Qwen3-Coder-Next"):
-		return 8002
-	case strings.Contains(repoID, "Devstral-2"):
-		return 8003
-	case strings.Contains(repoID, "Qwen2.5-Coder"):
-		return 8004
+func resolvePort(explicitPort int, explicit bool) (int, error) {
+	if explicit {
+		if isPortBusy(explicitPort) {
+			return 0, fmt.Errorf("port %d is already in use", explicitPort)
+		}
+		return explicitPort, nil
 	}
-	return 8002
+	port := explicitPort
+	for isPortBusy(port) {
+		port++
+		if port > explicitPort+100 {
+			return 0, fmt.Errorf("no free port in range %d-%d", explicitPort, explicitPort+100)
+		}
+	}
+	return port, nil
+}
+
+func isPortBusy(port int) bool {
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return true
+	}
+	listener.Close()
+	return false
 }
 
 func createVllmService(model *host.Model, quantization *host.Quantization, port int) {
@@ -143,6 +164,8 @@ func createVllmService(model *host.Model, quantization *host.Quantization, port 
 	}
 	args = append(args, quantization.Flags...)
 	args = append(args, "--enforce-eager")
+	args = append(args, "--gpu-memory-utilization", strconv.FormatFloat(serveGpuMemUtil, 'f', -1, 64))
+	args = append(args, "--max-model-len", strconv.Itoa(serveMaxModelLen))
 
 	if len(quantization.Flags) > 0 && quantization.DType != "" {
 		args = append(args, "--generation-config", "vllm")
@@ -205,9 +228,12 @@ func startVllmService(modelName string) {
 	}
 }
 
+const verifyTimeoutSeconds = 300
+
 func waitAndVerify(port int) {
 	fmt.Printf("  Waiting for server to start...\n")
-	for i := 0; i < 10; i++ {
+	attempts := verifyTimeoutSeconds / 5
+	for i := 0; i < attempts; i++ {
 		cmd := exec.Command("curl", "-s", "--max-time", "5", fmt.Sprintf("http://localhost:%d/v1/models", port))
 		output, err := cmd.Output()
 		if err == nil {
@@ -222,7 +248,7 @@ func waitAndVerify(port int) {
 				return
 			}
 		}
-		fmt.Printf("  Waiting... (%ds)\n", (i+1)*5)
+		fmt.Printf("  Waiting... (%ds elapsed)\n", (i+1)*5)
 	}
 	fmt.Println("  Timeout - check logs for errors")
 }
@@ -238,9 +264,24 @@ func serveVllm(model *host.Model, quant *host.Quantization, port int) {
 func serveLlamaCpp(model *host.Model, quant *host.Quantization, port int) {
 	modelDir := host.ModelDir(model)
 
-	// Download GGUF if not present
-	ggufPath := filepath.Join(modelDir, "model.gguf")
-	if _, err := os.Stat(ggufPath); os.IsNotExist(err) {
+	// Check if GGUF already downloaded by scanning for files matching the pattern
+	var ggufPath string
+	if entries, err := os.ReadDir(modelDir); err == nil {
+		var files []string
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".gguf") {
+				files = append(files, e.Name())
+			}
+		}
+		matched := host.ResolveGGUFFromList(files, quant.FilePattern)
+		if len(matched) > 0 {
+			ggufPath = filepath.Join(modelDir, matched[0])
+			fmt.Printf("  Model already downloaded: %s\n", ggufPath)
+		}
+	}
+
+	// Download if not found
+	if ggufPath == "" {
 		fmt.Printf("  Downloading %s %s...\n", model.Name, quant.Name)
 		fmt.Printf("  Pattern: %s\n", quant.FilePattern)
 
@@ -273,12 +314,10 @@ func serveLlamaCpp(model *host.Model, quant *host.Quantization, port int) {
 		}
 		ggufPath = filepath.Join(modelDir, matched[0])
 		fmt.Printf("  Using: %s\n", ggufPath)
-	} else {
-		fmt.Printf("  Model already downloaded: %s\n", ggufPath)
 	}
 
 	// Build command and create systemd service
-	args := host.BuildLlamaServerCommand(model, quant, ggufPath, port)
+	args := host.BuildLlamaServerCommand(model, quant, ggufPath, port, serveMaxModelLen)
 	serviceName := host.ServiceName(model)
 
 	fmt.Printf("  Creating systemd service: %s\n", serviceName)

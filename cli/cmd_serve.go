@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,16 @@ import (
 
 	"github.com/Codinglone/akilihost/host"
 )
+
+var servePort int
+var serveGpuMemUtil float64
+var serveMaxModelLen int
+
+func init() {
+	serveCmd.Flags().IntVar(&servePort, "port", 8002, "API port (auto-increments if busy unless explicitly set)")
+	serveCmd.Flags().Float64Var(&serveGpuMemUtil, "gpu-memory-utilization", 0.90, "Max GPU memory fraction (vLLM)")
+	serveCmd.Flags().IntVar(&serveMaxModelLen, "max-model-len", 32768, "Max context tokens")
+}
 
 var serveCmd = &cobra.Command{
 	Use:   "serve <model|auto>",
@@ -45,7 +56,7 @@ var serveCmd = &cobra.Command{
 		if target == "auto" || target == " recommand" || target == "recommend" {
 			// Auto-select best fitting model
 			sizer := host.NewModelSizer(gpu)
-			results := sizer.FindFit(models, gpu.TotalVRAMMB*85/100, 32768) // Use 85% VRAM
+			results := sizer.FindFit(models, gpu.TotalVRAMMB*85/100, serveMaxModelLen) // Use 85% VRAM
 
 			if len(results) == 0 {
 				fmt.Println("No models fit on this GPU!")
@@ -92,7 +103,11 @@ var serveCmd = &cobra.Command{
 
 		// Select backend
 		backend := host.SelectBackend(modelToServe, quantization, gpu)
-		port := determinePort(modelToServe.RepoID)
+		port, err := resolvePort(servePort, cmd.Flags().Changed("port"))
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
 
 		fmt.Printf("\nSelected:\n")
 		fmt.Printf("  Model: %s\n", modelToServe.Name)
@@ -114,16 +129,30 @@ var serveCmd = &cobra.Command{
 	},
 }
 
-func determinePort(repoID string) int {
-	switch {
-	case strings.Contains(repoID, "Qwen3-Coder-Next"):
-		return 8002
-	case strings.Contains(repoID, "Devstral-2"):
-		return 8003
-	case strings.Contains(repoID, "Qwen2.5-Coder"):
-		return 8004
+func resolvePort(explicitPort int, explicit bool) (int, error) {
+	if explicit {
+		if isPortBusy(explicitPort) {
+			return 0, fmt.Errorf("port %d is already in use", explicitPort)
+		}
+		return explicitPort, nil
 	}
-	return 8002
+	port := explicitPort
+	for isPortBusy(port) {
+		port++
+		if port > explicitPort+100 {
+			return 0, fmt.Errorf("no free port in range %d-%d", explicitPort, explicitPort+100)
+		}
+	}
+	return port, nil
+}
+
+func isPortBusy(port int) bool {
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return true
+	}
+	listener.Close()
+	return false
 }
 
 func createVllmService(model *host.Model, quantization *host.Quantization, port int) {
@@ -135,6 +164,8 @@ func createVllmService(model *host.Model, quantization *host.Quantization, port 
 	}
 	args = append(args, quantization.Flags...)
 	args = append(args, "--enforce-eager")
+	args = append(args, "--gpu-memory-utilization", strconv.FormatFloat(serveGpuMemUtil, 'f', -1, 64))
+	args = append(args, "--max-model-len", strconv.Itoa(serveMaxModelLen))
 
 	if len(quantization.Flags) > 0 && quantization.DType != "" {
 		args = append(args, "--generation-config", "vllm")
@@ -273,7 +304,7 @@ func serveLlamaCpp(model *host.Model, quant *host.Quantization, port int) {
 	}
 
 	// Build command and create systemd service
-	args := host.BuildLlamaServerCommand(model, quant, ggufPath, port, 32768)
+	args := host.BuildLlamaServerCommand(model, quant, ggufPath, port, serveMaxModelLen)
 	serviceName := host.ServiceName(model)
 
 	fmt.Printf("  Creating systemd service: %s\n", serviceName)

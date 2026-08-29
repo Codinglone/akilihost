@@ -60,3 +60,52 @@ func TestDefaultBackendIsVllm(t *testing.T) {
 		t.Errorf("expected default backend 'vllm', got '%s'", qwen3.Backend)
 	}
 }
+
+func TestModelArchitectureFields(t *testing.T) {
+	models, err := LoadModelDB()
+	if err != nil {
+		t.Fatalf("LoadModelDB failed: %v", err)
+	}
+
+	want := map[string]struct {
+		Layers  int
+		KVHeads int
+		HeadDim int
+	}{
+		"Qwen3-Coder-Next":  {12, 2, 256},
+		"Qwen2.5-Coder-32B": {64, 8, 128},
+		"Devstral 2 123B":   {88, 8, 128},
+		"Qwen3.8-27B":       {16, 4, 256},
+	}
+
+	for _, m := range models {
+		exp, ok := want[m.Name]
+		if !ok {
+			continue
+		}
+		if m.Layers != exp.Layers {
+			t.Errorf("%s: Layers = %d, want %d", m.Name, m.Layers, exp.Layers)
+		}
+		if m.KVHeads != exp.KVHeads {
+			t.Errorf("%s: KVHeads = %d, want %d", m.Name, m.KVHeads, exp.KVHeads)
+		}
+		if m.HeadDim != exp.HeadDim {
+			t.Errorf("%s: HeadDim = %d, want %d", m.Name, m.HeadDim, exp.HeadDim)
+		}
+	}
+}
+
+func TestQuantizationBitsPerWeight(t *testing.T) {
+	models, err := LoadModelDB()
+	if err != nil {
+		t.Fatalf("LoadModelDB failed: %v", err)
+	}
+
+	for _, m := range models {
+		for _, q := range m.Quantizations {
+			if q.BitsPerWeight <= 0 {
+				t.Errorf("%s/%s: BitsPerWeight = %f, want > 0", m.Name, q.Name, q.BitsPerWeight)
+			}
+		}
+	}
+}

@@ -19,7 +19,7 @@ func TestBuildLlamaServerCommand(t *testing.T) {
 	modelPath := "/opt/akilihost/models/Qwen3.8-27B/Qwen3.8-27B-UD-Q4_K_XL.gguf"
 	port := 8002
 
-	args := BuildLlamaServerCommand(model, quant, modelPath, port)
+	args := BuildLlamaServerCommand(model, quant, modelPath, port, 32768)
 
 	if args[0] != "llama-server" {
 		t.Errorf("expected first arg 'llama-server', got '%s'", args[0])

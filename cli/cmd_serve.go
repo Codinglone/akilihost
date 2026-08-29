@@ -45,7 +45,7 @@ var serveCmd = &cobra.Command{
 		if target == "auto" || target == " recommand" || target == "recommend" {
 			// Auto-select best fitting model
 			sizer := host.NewModelSizer(gpu)
-			results := sizer.FindFit(models, gpu.TotalVRAMMB*85/100) // Use 85% VRAM
+			results := sizer.FindFit(models, gpu.TotalVRAMMB*85/100, 32768) // Use 85% VRAM
 
 			if len(results) == 0 {
 				fmt.Println("No models fit on this GPU!")
@@ -278,7 +278,7 @@ func serveLlamaCpp(model *host.Model, quant *host.Quantization, port int) {
 	}
 
 	// Build command and create systemd service
-	args := host.BuildLlamaServerCommand(model, quant, ggufPath, port)
+	args := host.BuildLlamaServerCommand(model, quant, ggufPath, port, 32768)
 	serviceName := host.ServiceName(model)
 
 	fmt.Printf("  Creating systemd service: %s\n", serviceName)

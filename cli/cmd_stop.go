@@ -30,12 +30,6 @@ var stopCmd = &cobra.Command{
 			return
 		}
 
-		// Try to stop as PID
-		if _, err := strconv.Atoi(target); err == nil {
-			stopByPID(target)
-			return
-		}
-
 		// Try to stop by model name (matches part of command line)
 		stopByModelName(target)
 	},

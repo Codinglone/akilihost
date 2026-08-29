@@ -3,8 +3,10 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/Codinglone/akilihost/host"
 	"github.com/spf13/cobra"
@@ -58,7 +60,7 @@ func checkSystemdServices() {
 		cmdStr := strings.TrimSpace(string(showCmd))
 		if port := extractPort(cmdStr); port != "" {
 			fmt.Printf("  Port: %s\n", port)
-			go checkHealth(port)
+			fmt.Println(checkHealthResult(fmt.Sprintf("http://localhost:%s/v1/models", port)))
 		}
 
 		showVRAM()
@@ -93,7 +95,7 @@ func checkRunningProcesses() {
 					for i, p := range parts {
 						if p == "--port" && i+1 < len(parts) {
 							fmt.Printf("    Port: %s\n", parts[i+1])
-							go checkHealth(parts[i+1])
+							fmt.Println(checkHealthResult(fmt.Sprintf("http://localhost:%s/v1/models", parts[i+1])))
 							break
 						}
 					}
@@ -107,26 +109,27 @@ func checkRunningProcesses() {
 	}
 }
 
-func checkHealth(port string) {
-	resp, err := exec.Command("curl", "-s", "--max-time", "3", fmt.Sprintf("http://localhost:%s/v1/models", port)).Output()
+func checkHealthResult(url string) string {
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(url)
 	if err != nil {
-		fmt.Printf("    Health: timeout/unreachable\n")
-		return
+		return "    Health: timeout/unreachable"
 	}
+	defer resp.Body.Close()
 
 	var data map[string]interface{}
-	if err := json.Unmarshal(resp, &data); err != nil {
-		fmt.Printf("    Health: error parsing response\n")
-		return
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return "    Health: error parsing response"
 	}
 
 	if models, ok := data["data"].([]interface{}); ok && len(models) > 0 {
 		if model, ok := models[0].(map[string]interface{}); ok {
 			if id, ok := model["id"].(string); ok {
-				fmt.Printf("    Health: ok (model: %s)\n", id)
+				return fmt.Sprintf("    Health: ok (model: %s)", id)
 			}
 		}
 	}
+	return "    Health: no models in response"
 }
 
 func showVRAM() {

@@ -30,7 +30,8 @@ type Model struct {
 	Quantizations  []Quantization     `yaml:"quantizations"`
 }
 
-// LoadModelDB loads the curated model database from embedded YAML
+// LoadModelDB returns the curated in-memory model database.
+// The database is hardcoded in prepopulatedModels (not loaded from YAML).
 func LoadModelDB() ([]Model, error) {
 	models := make([]Model, len(prepopulatedModels))
 	copy(models, prepopulatedModels)
@@ -42,7 +43,7 @@ func LoadModelDB() ([]Model, error) {
 	return models, nil
 }
 
-// prepopulatedModels is the embedded model database (15 curated models)
+// prepopulatedModels is the in-memory model database (4 curated models)
 var prepopulatedModels = []Model{
 	{
 		RepoID:       "Qwen/Qwen3-Coder-Next",

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Codinglone/akilihost/host"
 	"github.com/spf13/cobra"
 )
 
@@ -41,11 +42,16 @@ var stopCmd = &cobra.Command{
 }
 
 func getSystemdServiceName(target string) string {
-	switch strings.ToLower(target) {
-	case "qwen", "qwen3", "qwen3-coder", "qwen3-coder-next":
-		return "vllm-qwen"
-	case "devstral", "devstral-2", "mistral-devstral":
-		return "vllm-devstral"
+	models, err := host.LoadModelDB()
+	if err != nil {
+		return ""
+	}
+	targetLower := strings.ToLower(target)
+	for _, m := range models {
+		nameLower := strings.ToLower(m.Name)
+		if strings.Contains(nameLower, targetLower) || strings.Contains(targetLower, nameLower) {
+			return host.ServiceName(&m)
+		}
 	}
 	return ""
 }
@@ -105,29 +111,21 @@ func stopByPID(pid string) {
 func stopByModelName(name string) {
 	fmt.Printf("Stopping model matching: %s\n", name)
 
-	cmd := exec.Command("pgrep", "-af", "vllm serve")
-	output, err := cmd.Output()
-	if err != nil {
-		fmt.Println("  No vLLM processes found")
-		return
-	}
+	for _, procPattern := range []string{"vllm serve", "llama-server"} {
+		cmd := exec.Command("pgrep", "-af", procPattern)
+		output, err := cmd.Output()
+		if err != nil {
+			continue
+		}
 
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	matched := false
-
-	for _, line := range lines {
-		if strings.Contains(line, "vllm serve") && !strings.Contains(line, "grep") {
+		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+		for _, line := range lines {
 			if strings.Contains(line, name) {
 				parts := strings.Fields(line)
 				if len(parts) > 0 {
 					stopByPID(parts[0])
-					matched = true
 				}
 			}
 		}
-	}
-
-	if !matched {
-		fmt.Println("  No matching process found")
 	}
 }

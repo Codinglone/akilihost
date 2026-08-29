@@ -82,10 +82,19 @@ func parseBParams(s string) int {
 // FindFit returns the best model + quantization that fits on GPU
 func (s *ModelSizer) FindFit(models []Model, availableMB int) []*SizingResult {
 	var results []*SizingResult
+	totalMemoryMB := s.GPU.TotalVRAMMB + s.GPU.SystemRAMMB
 	for _, model := range models {
 		for _, q := range model.Quantizations {
-			if q.MinVRAMMB <= availableMB {
+			// llama-cpp backend can split across GPU + CPU RAM
+			effectiveLimit := availableMB
+			if model.Backend == "llama-cpp" {
+				effectiveLimit = totalMemoryMB * 85 / 100
+			}
+
+			if q.MinVRAMMB <= effectiveLimit {
 				r := s.SizeModel(&model, &q)
+				r.AvailableMB = effectiveLimit
+				r.HeadroomMB = effectiveLimit - q.MinVRAMMB
 				if r.HeadroomMB >= 0 {
 					results = append(results, r)
 				}

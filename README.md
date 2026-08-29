@@ -148,10 +148,10 @@ The model speaks OpenAI API on `http://localhost:8002/v1`. This repo already has
 }
 ```
 
-**If the model runs on a remote server** (`your-gpu-server`), open a tunnel first:
+**If the model runs on a remote server**, open a tunnel first:
 
 ```bash
-# from your laptop
+# from your laptop — set AI_HOST_SERVER to your SSH host (see ~/.ssh/config)
 AI_HOST_SERVER=your-gpu-server ./scripts/ai-host-tunnel.sh start
 ./scripts/ai-host-tunnel.sh status   # should print Model: .../Qwen3.8-27B...
 curl -s http://localhost:8002/v1/models | jq

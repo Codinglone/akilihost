@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-28
 **Status:** Approved
-**Target VM:** `your-gpu-server` (Standard_NC4as_T4_v3, 1× T4 16GB VRAM, 27GB RAM, your-region)
+**Target VM:** `your-gpu-server` (e.g. 1× T4 16GB VRAM, 28GB RAM)
 
 ## Problem
 

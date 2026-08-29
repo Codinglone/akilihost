@@ -264,9 +264,24 @@ func serveVllm(model *host.Model, quant *host.Quantization, port int) {
 func serveLlamaCpp(model *host.Model, quant *host.Quantization, port int) {
 	modelDir := host.ModelDir(model)
 
-	// Download GGUF if not present
-	ggufPath := filepath.Join(modelDir, "model.gguf")
-	if _, err := os.Stat(ggufPath); os.IsNotExist(err) {
+	// Check if GGUF already downloaded by scanning for files matching the pattern
+	var ggufPath string
+	if entries, err := os.ReadDir(modelDir); err == nil {
+		var files []string
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".gguf") {
+				files = append(files, e.Name())
+			}
+		}
+		matched := host.ResolveGGUFFromList(files, quant.FilePattern)
+		if len(matched) > 0 {
+			ggufPath = filepath.Join(modelDir, matched[0])
+			fmt.Printf("  Model already downloaded: %s\n", ggufPath)
+		}
+	}
+
+	// Download if not found
+	if ggufPath == "" {
 		fmt.Printf("  Downloading %s %s...\n", model.Name, quant.Name)
 		fmt.Printf("  Pattern: %s\n", quant.FilePattern)
 
@@ -299,8 +314,6 @@ func serveLlamaCpp(model *host.Model, quant *host.Quantization, port int) {
 		}
 		ggufPath = filepath.Join(modelDir, matched[0])
 		fmt.Printf("  Using: %s\n", ggufPath)
-	} else {
-		fmt.Printf("  Model already downloaded: %s\n", ggufPath)
 	}
 
 	// Build command and create systemd service

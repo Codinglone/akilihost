@@ -35,4 +35,5 @@ func init() {
 	rootCmd.AddCommand(psCmd)
 	rootCmd.AddCommand(stopCmd)
 	rootCmd.AddCommand(recommendCmd)
+	rootCmd.AddCommand(connectCmd)
 }

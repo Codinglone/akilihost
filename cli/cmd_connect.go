@@ -2,10 +2,12 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +20,13 @@ import (
 var connectHost, connectUser, connectKey, connectAlias string
 var connectPort, connectTunnelPort int
 var connectYes, connectDryRun bool
+
+var (
+	aliasRe = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+	hostRe  = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+	userRe  = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+	keyRe   = regexp.MustCompile(`^[a-zA-Z0-9._~\/-]+$`)
+)
 
 var connectCmd = &cobra.Command{
 	Use:   "connect [alias]",
@@ -72,17 +81,17 @@ func validateConnectArgs() error {
 	if alias == "" {
 		alias = "mygpu"
 	}
-	if strings.ContainsAny(alias, " \t\n\r") || alias == "" {
-		return fmt.Errorf("invalid alias %q: must be non-empty without spaces", alias)
+	if alias == "" || !aliasRe.MatchString(alias) {
+		return fmt.Errorf("invalid alias %q: must match %s (allowed [a-zA-Z0-9._-])", alias, aliasRe.String())
 	}
-	if connectHost != "" && strings.ContainsAny(connectHost, " \t\n\r") {
-		return fmt.Errorf("invalid --host %q: must not contain spaces", connectHost)
+	if connectHost != "" && !hostRe.MatchString(connectHost) {
+		return fmt.Errorf("invalid --host %q: must match %s (allowed [a-zA-Z0-9._-])", connectHost, hostRe.String())
 	}
-	if connectUser != "" && strings.ContainsAny(connectUser, " \t\n\r") {
-		return fmt.Errorf("invalid --user %q: must not contain spaces", connectUser)
+	if connectUser != "" && !userRe.MatchString(connectUser) {
+		return fmt.Errorf("invalid --user %q: must match %s (allowed [a-zA-Z0-9._-])", connectUser, userRe.String())
 	}
-	if connectKey != "" && strings.ContainsAny(connectKey, " \t\n\r") {
-		return fmt.Errorf("invalid --key %q: must not contain spaces", connectKey)
+	if connectKey != "" && !keyRe.MatchString(connectKey) {
+		return fmt.Errorf("invalid --key %q: must not contain shell metachars, allowed [a-zA-Z0-9._~/ -]", connectKey)
 	}
 	if connectPort < 1 || connectPort > 65535 {
 		return fmt.Errorf("invalid --port %d: must be 1-65535", connectPort)
@@ -95,6 +104,19 @@ func validateConnectArgs() error {
 		return fmt.Errorf("invalid --tunnel-port %d: must be 1-65535", tp)
 	}
 	return nil
+}
+
+func sshConfigHasHost(path, alias string) (bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	for _, l := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(l) == "Host "+alias {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func runConnect(cmd *cobra.Command, args []string) error {
@@ -119,9 +141,6 @@ func runConnect(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// handle --yes flag (skip confirmations) - referenced to avoid unused
-	_ = connectYes
-
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("get home dir: %w", err)
@@ -145,6 +164,24 @@ func runConnect(cmd *cobra.Command, args []string) error {
 		if err := os.MkdirAll(filepath.Dir(sshConfig), 0700); err != nil {
 			return fmt.Errorf("create ~/.ssh dir: %w", err)
 		}
+		if !connectYes {
+			exists, err := sshConfigHasHost(sshConfig, connectAlias)
+			if err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("check ssh config: %w", err)
+			}
+			if err == nil && exists {
+				fmt.Fprintf(cmd.OutOrStdout(), "SSH config Host %s already exists, overwrite? [y/N]: ", connectAlias)
+				reader := bufio.NewReader(cmd.InOrStdin())
+				line, err := reader.ReadString('\n')
+				if err != nil {
+					return fmt.Errorf("read confirmation: %w", err)
+				}
+				line = strings.TrimSpace(strings.ToLower(line))
+				if line != "y" && line != "yes" {
+					return fmt.Errorf("aborted: SSH config Host %s not overwritten (use --yes to skip confirmation)", connectAlias)
+				}
+			}
+		}
 		created, err := host.EnsureSSHConfig(sshConfig, connectAlias, connectHost, connectUser, connectKey)
 		if err != nil {
 			return fmt.Errorf("ensure SSH config Host %s -> %s: %w", connectAlias, connectHost, err)
@@ -157,26 +194,37 @@ func runConnect(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "→ ssh %s akilihost init\n", connectAlias)
-	if out, err := exec.Command("ssh", connectAlias, "bash -lc '~/bin/akilihost init || akilihost init'").CombinedOutput(); err != nil {
-		return fmt.Errorf("remote init failed: %w output: %s", err, string(out))
+	ctxInit, cancelInit := context.WithTimeout(context.Background(), 120*time.Second)
+	outInit, err := exec.CommandContext(ctxInit, "ssh", connectAlias, "akilihost", "init").CombinedOutput()
+	cancelInit()
+	if err != nil {
+		return fmt.Errorf("remote init failed: %w output: %s", err, string(outInit))
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), "✓ remote init done")
 
 	fmt.Fprintf(cmd.OutOrStdout(), "→ ssh %s akilihost recommend\n", connectAlias)
-	out, err := exec.Command("ssh", connectAlias, "bash -lc '~/bin/akilihost recommend || akilihost recommend'").CombinedOutput()
+	ctxRec, cancelRec := context.WithTimeout(context.Background(), 60*time.Second)
+	out, err := exec.CommandContext(ctxRec, "ssh", connectAlias, "akilihost", "recommend").CombinedOutput()
+	cancelRec()
 	if err != nil {
 		return fmt.Errorf("remote recommend failed: %w output: %s", err, string(out))
 	}
 	fmt.Fprint(cmd.OutOrStdout(), string(out))
 	fmt.Fprint(cmd.OutOrStdout(), "Select [1..N]: ")
-	reader := bufio.NewReader(os.Stdin)
-	line, _ := reader.ReadString('\n')
+	reader := bufio.NewReader(cmd.InOrStdin())
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("read selection: %w", err)
+	}
 	line = strings.TrimSpace(line)
 	choice, err := strconv.Atoi(line)
 	if err != nil {
 		return fmt.Errorf("invalid selection %q: %w", line, err)
 	}
-	models, _ := host.LoadModelDB()
+	models, err := host.LoadModelDB()
+	if err != nil {
+		return fmt.Errorf("load model DB: %w", err)
+	}
 	if len(models) == 0 {
 		return fmt.Errorf("no models available")
 	}
@@ -190,30 +238,27 @@ func runConnect(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(cmd.OutOrStdout(), "→ selected model %s\n", pick)
 
 	fmt.Fprintf(cmd.OutOrStdout(), "→ ssh %s akilihost serve %s --port %d\n", connectAlias, pick, connectPort)
-	serveCmd := fmt.Sprintf("bash -lc '~/bin/akilihost serve %s --port %d || akilihost serve %s --port %d'", pick, connectPort, pick, connectPort)
-	if out, err := exec.Command("ssh", connectAlias, serveCmd).CombinedOutput(); err != nil {
-		return fmt.Errorf("remote serve failed: %w output: %s", err, string(out))
+	ctxServe, cancelServe := context.WithTimeout(context.Background(), 120*time.Second)
+	outServe, err := exec.CommandContext(ctxServe, "ssh", connectAlias, "akilihost", "serve", pick, "--port", strconv.Itoa(connectPort)).CombinedOutput()
+	cancelServe()
+	if err != nil {
+		return fmt.Errorf("remote serve failed: %w output: %s", err, string(outServe))
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "→ polling ssh %s health localhost:%d\n", connectAlias, connectPort)
 	healthOK := false
 	for i := 0; i < 100; i++ {
 		time.Sleep(3 * time.Second)
-		healthOut, err := exec.Command("ssh", connectAlias, fmt.Sprintf("curl -s http://localhost:%d/health", connectPort)).CombinedOutput()
-		if err == nil && strings.Contains(string(healthOut), "ok") {
+		ctxH, cancelH := context.WithTimeout(context.Background(), 10*time.Second)
+		healthOut, err := exec.CommandContext(ctxH, "ssh", connectAlias, "curl", "-s", "--max-time", "5", fmt.Sprintf("http://localhost:%d/health", connectPort)).CombinedOutput()
+		cancelH()
+		if err == nil && strings.Contains(string(healthOut), `"status"`) && strings.Contains(string(healthOut), `"ok"`) {
 			healthOK = true
 			break
-		}
-		if err == nil && strings.Contains(string(healthOut), "status") {
-			healthOK = true
-			break
-		}
-		if i == 99 {
-			return fmt.Errorf("timeout waiting for remote health on %s:%d after 300s", connectAlias, connectPort)
 		}
 	}
 	if !healthOK {
-		return fmt.Errorf("remote health check failed")
+		return fmt.Errorf("timeout waiting for remote health on %s:%d after 300s", connectAlias, connectPort)
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), "✓ remote health ok")
 

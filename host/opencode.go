@@ -7,33 +7,41 @@ import (
 	"time"
 )
 
-type OpencodeConfig struct {
-	Schema   string                 `json:"$schema,omitempty"`
-	Plugin   []string               `json:"plugin,omitempty"`
-	Provider map[string]interface{} `json:"provider"`
-	Model    string                 `json:"model,omitempty"`
-}
+const (
+	opencodeTimeout      = 600000
+	opencodeChunkTimeout = 120000
+)
 
 func PatchOpencode(path string, port int) (string, error) {
 	var backup string
 	data, err := os.ReadFile(path)
 	cfg := make(map[string]interface{})
-	if err == nil && len(data) > 0 {
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return "", fmt.Errorf("read %s: %w", path, err)
+		}
+		cfg["$schema"] = "https://opencode.ai/config.json"
+		cfg["plugin"] = []string{"superpowers@git+https://github.com/obra/superpowers.git", "opencode-wakatime"}
+	} else if len(data) > 0 {
 		if err := json.Unmarshal(data, &cfg); err != nil {
-			return "", err
+			return "", fmt.Errorf("unmarshal %s: %w", path, err)
 		}
 		backup = fmt.Sprintf("%s.bak.%d", path, time.Now().Unix())
-		if err := os.WriteFile(backup, data, 0644); err != nil {
+		if err := os.WriteFile(backup, data, 0600); err != nil {
+			return "", err
+		}
+		if err := os.Chmod(backup, 0600); err != nil {
 			return "", err
 		}
 	} else {
 		cfg["$schema"] = "https://opencode.ai/config.json"
 		cfg["plugin"] = []string{"superpowers@git+https://github.com/obra/superpowers.git", "opencode-wakatime"}
 	}
-	if _, ok := cfg["provider"]; !ok {
-		cfg["provider"] = make(map[string]interface{})
+	prov, ok := cfg["provider"].(map[string]interface{})
+	if !ok {
+		prov = make(map[string]interface{})
+		cfg["provider"] = prov
 	}
-	prov := cfg["provider"].(map[string]interface{})
 	self, ok := prov["selfhosted"].(map[string]interface{})
 	if !ok {
 		self = make(map[string]interface{})
@@ -47,8 +55,8 @@ func PatchOpencode(path string, port int) (string, error) {
 		self["options"] = opts
 	}
 	opts["baseURL"] = fmt.Sprintf("http://localhost:%d/v1", port)
-	opts["timeout"] = 600000
-	opts["chunkTimeout"] = 120000
+	opts["timeout"] = opencodeTimeout
+	opts["chunkTimeout"] = opencodeChunkTimeout
 	// merge models from host/models.go
 	modelsMap, ok := self["models"].(map[string]interface{})
 	if !ok {
@@ -67,5 +75,11 @@ func PatchOpencode(path string, port int) (string, error) {
 	if err != nil {
 		return backup, err
 	}
-	return backup, os.WriteFile(path, out, 0644)
+	if err := os.WriteFile(path, out, 0600); err != nil {
+		return backup, err
+	}
+	if err := os.Chmod(path, 0600); err != nil {
+		return backup, err
+	}
+	return backup, nil
 }

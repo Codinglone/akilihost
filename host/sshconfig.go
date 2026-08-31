@@ -13,7 +13,14 @@ func EnsureSSHConfig(path, alias, host, user, key string) (bool, error) {
 		return false, err
 	}
 	content := string(data)
-	if strings.Contains(content, "Host "+alias) {
+	aliasExists := false
+	for _, l := range strings.Split(content, "\n") {
+		if strings.TrimSpace(l) == "Host "+alias {
+			aliasExists = true
+			break
+		}
+	}
+	if aliasExists {
 		lines := strings.Split(content, "\n")
 		startIdx := -1
 		endIdx := len(lines)
@@ -31,7 +38,7 @@ func EnsureSSHConfig(path, alias, host, user, key string) (bool, error) {
 			}
 		}
 		if startIdx == -1 {
-			// fallback, should not happen because Contains check passed
+			// fallback, should not happen because aliasExists check passed
 			startIdx = 0
 		}
 		blockLines := lines[startIdx:endIdx]

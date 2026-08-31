@@ -1,11 +1,40 @@
 package host
 
 import (
+	"bufio"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// ParseSSHConfigForTest is a test helper moved from production (see I4).
+// It parses Host lines safely: checks Fields length and returns scanner errors.
+func ParseSSHConfigForTest(path string) (map[string]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	m := make(map[string]string)
+	sc := bufio.NewScanner(f)
+	cur := ""
+	for sc.Scan() {
+		l := strings.TrimSpace(sc.Text())
+		if strings.HasPrefix(l, "Host ") {
+			fields := strings.Fields(l)
+			if len(fields) < 2 {
+				continue
+			}
+			cur = fields[1]
+			m[cur] = ""
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
 
 func TestEnsureSSHConfigCreate(t *testing.T) {
 	dir := t.TempDir()

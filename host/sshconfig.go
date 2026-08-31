@@ -1,13 +1,24 @@
 package host
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"strings"
 )
 
-func EnsureSSHConfig(path, alias, host, user, key string) (bool, error) {
+func EnsureSSHConfig(path, alias, hostname, user, key string) (bool, error) {
+	if alias == "" || strings.ContainsAny(alias, " \t\n\r") {
+		return false, fmt.Errorf("invalid alias")
+	}
+	if hostname == "" || strings.ContainsAny(hostname, " \t\n\r") {
+		return false, fmt.Errorf("invalid hostname")
+	}
+	if user == "" || strings.ContainsAny(user, " \t\n\r") {
+		return false, fmt.Errorf("invalid user")
+	}
+	if key == "" || strings.ContainsAny(key, " \t\n\r") {
+		return false, fmt.Errorf("invalid key")
+	}
 	data, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return false, err
@@ -66,7 +77,7 @@ func EnsureSSHConfig(path, alias, host, user, key string) (bool, error) {
 			switch {
 			case strings.HasPrefix(trim, "HostName "):
 				if !foundHostName {
-					newBlock = append(newBlock, "    HostName "+host)
+					newBlock = append(newBlock, "    HostName "+hostname)
 					foundHostName = true
 				}
 			case strings.HasPrefix(trim, "User "):
@@ -118,7 +129,7 @@ func EnsureSSHConfig(path, alias, host, user, key string) (bool, error) {
 		}
 
 		if !foundHostName {
-			newBlock = append(newBlock, "    HostName "+host)
+			newBlock = append(newBlock, "    HostName "+hostname)
 		}
 		if !foundUser {
 			newBlock = append(newBlock, "    User "+user)
@@ -155,31 +166,12 @@ func EnsureSSHConfig(path, alias, host, user, key string) (bool, error) {
 		if newContent == content {
 			return false, nil
 		}
-		return false, os.WriteFile(path, []byte(newContent), 0644)
+		return false, os.WriteFile(path, []byte(newContent), 0600)
 	}
 	// create new block
-	block := fmt.Sprintf("\nHost %s\n    HostName %s\n    User %s\n    IdentityFile %s\n    IdentitiesOnly yes\n    StrictHostKeyChecking accept-new\n    ServerAliveInterval 30\n    ServerAliveCountMax 3\n    LocalForward 8002 127.0.0.1:8002\n    LocalForward 8003 127.0.0.1:8003\n", alias, host, user, key)
-	if err := os.WriteFile(path, []byte(content+block), 0644); err != nil {
+	block := fmt.Sprintf("\nHost %s\n    HostName %s\n    User %s\n    IdentityFile %s\n    IdentitiesOnly yes\n    StrictHostKeyChecking accept-new\n    ServerAliveInterval 30\n    ServerAliveCountMax 3\n    LocalForward 8002 127.0.0.1:8002\n    LocalForward 8003 127.0.0.1:8003\n", alias, hostname, user, key)
+	if err := os.WriteFile(path, []byte(content+block), 0600); err != nil {
 		return false, err
 	}
 	return true, nil
-}
-
-func ParseSSHConfigForTest(path string) (map[string]string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	m := make(map[string]string)
-	sc := bufio.NewScanner(f)
-	cur := ""
-	for sc.Scan() {
-		l := strings.TrimSpace(sc.Text())
-		if strings.HasPrefix(l, "Host ") {
-			cur = strings.Fields(l)[1]
-			m[cur] = ""
-		}
-	}
-	return m, nil
 }

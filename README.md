@@ -40,6 +40,19 @@ go build -o akilihost
 curl http://localhost:8002/v1/models | jq
 ```
 
+### Portable connect (any Ubuntu VM)
+
+```bash
+# from laptop, after creating VM with IP 1.2.3.4
+go build -o akilihost
+./akilihost connect mygpu --host 1.2.3.4 --user ubuntu --key ~/.ssh/mykey.pem
+# prompts model from recommend, serves, tunnels, patches opencode
+curl http://localhost:8002/health
+opencode run "hello" --model selfhosted/unsloth/Qwen3.8-27B-GGUF
+```
+
+Re-running `./akilihost connect mygpu` is idempotent (skips serve if healthy).
+
 ## Commands
 
 ### `akilihost recommend`

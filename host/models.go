@@ -152,20 +152,20 @@ var prepopulatedModels = []Model{
 		},
 		Quantizations: []Quantization{
 			{
-				Name:          "UD-Q4_K_XL",
-				Description:   "Unsloth Dynamic 4-bit (~17GB, GPU+CPU split)",
-				MinVRAMMB:     17408,
-				FilePattern:   "*UD-Q4_K_XL*",
-				Flags:         []string{"--n-gpu-layers", "auto"},
-				BitsPerWeight: 4.5,
-			},
-			{
 				Name:          "UD-Q3_K_XL",
 				Description:   "Unsloth Dynamic 3-bit (~13GB, fits T4 fully)",
 				MinVRAMMB:     13312,
 				FilePattern:   "*UD-Q3_K_XL*",
 				Flags:         []string{"--n-gpu-layers", "999"},
 				BitsPerWeight: 3.5,
+			},
+			{
+				Name:          "UD-Q4_K_XL",
+				Description:   "Unsloth Dynamic 4-bit (~17GB, GPU+CPU split)",
+				MinVRAMMB:     17408,
+				FilePattern:   "*UD-Q4_K_XL*",
+				Flags:         []string{"--n-gpu-layers", "auto"},
+				BitsPerWeight: 4.5,
 			},
 		},
 	},
